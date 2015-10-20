@@ -1,5 +1,5 @@
 
-ELM_MAIN = DemoDict
+ELM_MAIN = Demo
 ELM_OUTPUT = elm.js
 STATIC = index.html
 BROWSER_TARGET = index.html

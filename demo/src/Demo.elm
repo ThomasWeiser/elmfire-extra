@@ -13,9 +13,20 @@ import Signal exposing (Mailbox, Address, mailbox, send)
 import Time
 import Html exposing (Html, text, ol, li, i, div, p)
 
+import Debug
+
 -------------------------------------------------------------------------------
 
+url : String
 url = "https://elmfiretest.firebaseio.com/dict"
+
+config : EFD.Config Int
+config =
+  { location = ElmFire.fromUrl url
+  , orderOptions = ElmFire.noOrder
+  , encoder = JE.int
+  , decoder = JD.int
+  }
 
 -------------------------------------------------------------------------------
 
@@ -29,13 +40,16 @@ initTask : Task Error ()
 initTask =
   EFD.subscribeDelta
     changes.address
-    JD.int
-    (ElmFire.fromUrl url)
+    config
+  -- Unsubscribe after some time
+  `andThen` \unsubTask ->
+    Task.sleep 30000
+  `andThen` \_ ->
+    unsubTask
 
 states : Signal State
 states =
   EFD.integrate changes.signal
-  -- or: `Signal.foldp EFD.update Dict.empty changes.signal`
 
 port initSyncing : Task Error ()
 port initSyncing = initTask
@@ -87,6 +101,8 @@ viewDelta delta =
     EFD.Changed key val -> text "changed " :: viewItem key (toString val)
     EFD.Removed key val -> text "removed " :: viewItem key (toString val)
     EFD.Undecodable key descr -> text "undecodable " :: viewItem key descr
+    EFD.Unsubscribed -> [text "unsubscribed"]
+    EFD.QueryError error -> [text <| "query error: " ++ toString error]
 
 viewItem : String -> String -> List Html
 viewItem key val =
@@ -107,8 +123,7 @@ operationAddressee : Address (EFD.Operation Int)
 operationAddressee =
   EFD.forwardOperation
     gatherOperationTasks.address
-    JE.int
-    (ElmFire.fromUrl url)
+    config
 
 infixl 1 =>
 (=>) : Task x a -> Task x b -> Task x b
@@ -127,4 +142,16 @@ port testOperations =
    => op (EFD.Push 1)
    => op (EFD.Insert "a" 2)
    => op (EFD.Insert "a" 3)
+   => op (EFD.Insert "f" 33)
    => op (EFD.Remove "d")
+   => op (EFD.Update "a" increment)
+   => op (EFD.Update "a" increment)
+   => op (EFD.Update "a" increment)
+   => op (EFD.Update "a" increment)
+   => op (EFD.MapT (\k n -> n * 2))
+   => op (EFD.FilterT (\k n -> n < 20))
+
+increment : Maybe Int -> Maybe Int
+increment mN = case Debug.log "mN" mN of
+  Nothing -> Just 0
+  Just n -> if n > 3 then Nothing else Just (n + 1)
