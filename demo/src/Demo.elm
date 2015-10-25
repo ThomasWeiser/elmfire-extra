@@ -136,22 +136,26 @@ port testOperations =
     sleep = Task.sleep (1 * Time.second)
     op operation = sleep => send operationAddressee operation
   in
-      op (EFD.Empty)
-   => op (EFD.FromList [("b", 4), ("c", 5)])
-   => op (EFD.FromDict <| Dict.fromList [("d", 6), ("e", 7)])
+      op (EFD.None)
+   -- => op (EFD.Empty)
+   => op (EFD.FromList EFD.Sequential [("b", 4), ("c", 5)])
+   => op (EFD.FromDict EFD.Sequential <| Dict.fromList [("d", 6), ("e", 7), ("f", 8)])
    => op (EFD.Push 1)
    => op (EFD.Insert "a" 2)
    => op (EFD.Insert "a" 3)
-   => op (EFD.Insert "f" 33)
+   => op (EFD.Insert "g" 33)
    => op (EFD.Remove "d")
    => op (EFD.Update "a" increment)
    => op (EFD.Update "a" increment)
    => op (EFD.Update "a" increment)
    => op (EFD.Update "a" increment)
-   => op (EFD.MapT (\k n -> n * 2))
-   => op (EFD.FilterT (\k n -> n < 20))
+   => op (EFD.Map EFD.Parallel (\k n -> n + 1))
+   => op (EFD.Map EFD.AllAtOnce (\k n -> n * 2))
+   => op (EFD.Map EFD.Sequential (\k n -> n - 1))
+   => op (EFD.Filter EFD.AllAtOnce (\k n -> n < 20))
+   -- test FilterMap
 
 increment : Maybe Int -> Maybe Int
-increment mN = case Debug.log "mN" mN of
+increment mN = case mN of
   Nothing -> Just 0
   Just n -> if n > 3 then Nothing else Just (n + 1)

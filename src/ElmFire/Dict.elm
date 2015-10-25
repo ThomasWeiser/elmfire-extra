@@ -1,7 +1,7 @@
 module ElmFire.Dict
   ( Config
   , Delta (..), subscribeDelta, update, integrate, mirror
-  , Operation (..), operate, forwardOperation
+  , Operation (..), Mode (..), operate, forwardOperation
   ) where
 
 
@@ -112,66 +112,116 @@ mirror config =
 
 type Operation v
   = None
-  | Empty
-  | FromDict (Dict String v)
-  | FromList (List (String, v))
+  -- Operations on single elements of the dictionary
   | Insert String v
   | Push v
-  | Remove String
   | Update String (Maybe v -> Maybe v)
---| Map (String -> v -> v) -- One transaction for each mapped element -- TODO
-  | MapT (String -> v -> v) -- One transaction for the whole mapping
---| Filter (String -> v -> Bool) -- TODO
-  | FilterT (String -> v -> Bool) -- TODO
---| FilterMap (String -> v -> Maybe v) -- TODO
---| FilterMapT (String -> v -> Maybe v) -- TODO
+  | Remove String
+  -- Operations on the whole dictionary
+  | Empty
+  | FromDict Mode (Dict String v)
+  | FromList Mode (List (String, v))
+--| InsertList Mode (List (String, v)) -- Todo
+--| RemoveList Mode (List String) -- Todo
+--| KeepList Mode (List String) -- Todo
+  | Map Mode (String -> v -> v)
+  | Filter Mode (String -> v -> Bool)
+  | FilterMap Mode (String -> v -> Maybe v)
 -- poss. more:
---  - union, intersect, diff (?)
---  - list operations
---  - test/filter decodability
+--  - filter out undecodable
+-- poss. operations with a result (in separate operateX functions)
 --  - getting as Dict or List or Pairs per once-query
---  - etc.
+--  - test/filter decodability
+
+type Mode
+  = AllAtOnce
+  | Sequential
+  | Parallel -- will be executed asynchronously (restriction due to Task module)
+
+unitize : Task x a -> Task x ()
+unitize = Task.map (always ())
 
 operate : Config v -> Operation v -> Task Error ()
 operate config operation =
   let
-    encodePairs pairs = JE.object <| List.map (\(k, v) -> (k, config.encoder v)) pairs
+    -- encodePairs : List (String, v) -> JD.Value
+    encodePairs pairs =
+      JE.object <| List.map (\(key, value) -> (key, config.encoder value)) pairs
+    getKeys : Task Error (List String)
+    getKeys =
+      ElmFire.once
+        (ElmFire.valueChanged ElmFire.noOrder)
+        config.location
+      |> Task.map ElmFire.toKeyList
+    disposeTaskList : Mode -> List (Task x a) -> Task x ()
+    disposeTaskList mode taskList =
+      if mode == Parallel
+      then Task.sequence (List.map Task.spawn taskList) |> unitize
+      else Task.sequence taskList |> unitize
   in
-    ( case operation of
-        None
-         -> ElmFire.open config.location
-        Empty
-         -> ElmFire.remove config.location
-        FromDict dict
-         -> ElmFire.set (encodePairs <| Dict.toList dict) config.location
-        FromList pairs
-         -> ElmFire.set (encodePairs pairs) config.location
-        Insert key value
-         -> ElmFire.set (config.encoder value) (ElmFire.sub key config.location)
-        Push value
-         -> ElmFire.set (config.encoder value) (ElmFire.push config.location)
-        Remove key
-         -> ElmFire.remove (ElmFire.sub key config.location)
-        Update key alter
-         -> ElmFire.transaction
-              (operateUpdateFun config alter)
-              (config.location |> ElmFire.sub key)
-              True
-            |> Task.map (snd >> .reference)
-        MapT mapping
-         -> ElmFire.transaction
-              (operateMapTFun config mapping)
-              config.location
-              True
-            |> Task.map (snd >> .reference)
-        FilterT filter
-         -> ElmFire.transaction
-              (operateFilterTFun config filter)
-              config.location
-              True
-            |> Task.map (snd >> .reference)
-    )
-    |> Task.map (always ())
+    case operation of
+      None ->
+        ElmFire.open config.location
+        |> unitize
+      Insert key value ->
+        ElmFire.set (config.encoder value) (ElmFire.sub key config.location)
+        |> unitize
+      Push value ->
+        ElmFire.set (config.encoder value) (ElmFire.push config.location)
+        |> unitize
+      Update key alter ->
+        ElmFire.transaction
+          (operateUpdateFun config alter)
+          (config.location |> ElmFire.sub key)
+          True
+        |> unitize
+      Remove key ->
+        ElmFire.remove (ElmFire.sub key config.location)
+        |> unitize
+      Empty ->
+        ElmFire.remove config.location
+        |> unitize
+      FromDict mode dict ->
+        operate config (FromList mode (Dict.toList dict))
+      FromList AllAtOnce pairs ->
+        ElmFire.set (encodePairs pairs) config.location
+        |> unitize
+      FromList mode pairs ->
+        ElmFire.remove config.location `andThen` \_ ->
+        disposeTaskList mode
+          ( List.map
+              (\(key, value) ->
+                ElmFire.set (config.encoder value) (ElmFire.sub key config.location)
+              )
+              pairs
+          )
+      Map AllAtOnce mapping ->
+        ElmFire.transaction
+          (operateMapTFun config mapping)
+          config.location
+          True
+        |> unitize
+      Map mode mapping ->
+        getKeys `andThen` \keys ->
+          disposeTaskList mode (List.map (operateMapElemT config mapping) keys)
+      Filter AllAtOnce filter ->
+        ElmFire.transaction
+          (operateFilterTFun config filter)
+          config.location
+          True
+        |> unitize
+      Filter mode filter ->
+        getKeys `andThen` \keys ->
+          disposeTaskList mode (List.map (operateFilterElemT config filter) keys)
+      FilterMap AllAtOnce filterMapping ->
+        ElmFire.transaction
+          (operateFilterMapTFun config filterMapping)
+          config.location
+          True
+        |> unitize
+      FilterMap mode filterMapping ->
+        getKeys `andThen` \keys ->
+          disposeTaskList mode (List.map (operateFilterMapElemT config filterMapping) keys)
 
 operateUpdateFun : Config v -> (Maybe v -> Maybe v) -> Maybe JE.Value -> ElmFire.Action
 operateUpdateFun config alter maybeJsonVal =
@@ -208,6 +258,18 @@ operateMapTFun config mapping maybeJsonDict =
           in
             ElmFire.Set <| JE.object newPairs
 
+operateMapElemT : Config v -> (String -> v -> v) -> String -> Task Error (Bool, ElmFire.Snapshot)
+operateMapElemT config mapping key =
+  ElmFire.transaction
+    (\maybeJsonVal -> case maybeJsonVal of
+      Nothing -> ElmFire.Abort
+      Just jsonVal -> case JD.decodeValue config.decoder jsonVal of
+        Err _ -> ElmFire.Abort
+        Ok val -> ElmFire.Set (config.encoder (mapping key val))
+    )
+    (ElmFire.sub key config.location)
+    True
+
 operateFilterTFun : Config v -> (String -> v -> Bool) -> Maybe JE.Value -> ElmFire.Action
 operateFilterTFun config filter maybeJsonDict =
   case maybeJsonDict of
@@ -227,6 +289,58 @@ operateFilterTFun config filter maybeJsonDict =
               pairs
           in
             ElmFire.Set <| JE.object newPairs
+
+operateFilterElemT : Config v -> (String -> v -> Bool) -> String -> Task Error (Bool, ElmFire.Snapshot)
+operateFilterElemT config filter key =
+  ElmFire.transaction
+    (\maybeJsonVal -> case maybeJsonVal of
+      Nothing -> ElmFire.Abort
+      Just jsonVal -> case JD.decodeValue config.decoder jsonVal of
+        Err _ -> ElmFire.Abort
+        Ok val ->
+          if filter key val
+          then ElmFire.Abort
+          else ElmFire.Remove
+    )
+    (ElmFire.sub key config.location)
+    True
+
+operateFilterMapTFun : Config v -> (String -> v -> Maybe v) -> Maybe JE.Value -> ElmFire.Action
+operateFilterMapTFun config filterMapping maybeJsonDict =
+  case maybeJsonDict of
+    Nothing -> ElmFire.Abort
+    Just jsonDict ->
+      case JD.decodeValue (JD.keyValuePairs JD.value) jsonDict of
+        Err _ -> ElmFire.Abort
+        Ok pairs ->
+          let
+            newPairs : List (String, JE.Value)
+            newPairs = List.filterMap
+              (\(key, jsonVal) ->
+                case JD.decodeValue config.decoder jsonVal of
+                  Err _ -> Just (key, jsonVal)
+                  Ok val ->
+                    case filterMapping key val of
+                      Nothing -> Nothing
+                      Just newVal -> Just (key, config.encoder newVal)
+              )
+              pairs
+          in
+            ElmFire.Set <| JE.object newPairs
+
+operateFilterMapElemT : Config v -> (String -> v -> Maybe v) -> String -> Task Error (Bool, ElmFire.Snapshot)
+operateFilterMapElemT config filterMapping key =
+  ElmFire.transaction
+    (\maybeJsonVal -> case maybeJsonVal of
+      Nothing -> ElmFire.Abort
+      Just jsonVal -> case JD.decodeValue config.decoder jsonVal of
+        Err _ -> ElmFire.Abort
+        Ok val -> case filterMapping key val of
+          Nothing -> ElmFire.Remove
+          Just newVal -> ElmFire.Set (config.encoder newVal)
+    )
+    (ElmFire.sub key config.location)
+    True
 
 forwardOperation : Address (Task Error ()) -> Config v
                 -> Address (Operation v)
