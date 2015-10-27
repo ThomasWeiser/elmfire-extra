@@ -2,8 +2,9 @@
 -}
 
 
-import ElmFire exposing (Error)
+import ElmFire exposing (Error, Reference)
 import ElmFire.Dict as EFD
+import ElmFire.Op as EFO
 
 import Dict exposing (Dict)
 import Json.Encode as JE
@@ -23,7 +24,8 @@ url = "https://elmfiretest.firebaseio.com/dict"
 config : EFD.Config Int
 config =
   { location = ElmFire.fromUrl url
-  , orderOptions = ElmFire.noOrder
+  -- , orderOptions = ElmFire.noOrder
+  , orderOptions = ElmFire.orderByValue ElmFire.noRange ElmFire.noLimit
   , encoder = JE.int
   , decoder = JD.int
   }
@@ -119,10 +121,13 @@ gatherOperationTasks = mailbox (succeed ())
 port runOperationTasks : Signal (Task Error ())
 port runOperationTasks = gatherOperationTasks.signal
 
-operationAddressee : Address (EFD.Operation Int)
+operationAddressee : Address (EFO.Operation Int)
 operationAddressee =
-  EFD.forwardOperation
-    gatherOperationTasks.address
+  EFO.forwardOperation
+    ( Signal.forwardTo
+        gatherOperationTasks.address
+        (Task.map (always ()))
+    )
     config
 
 infixl 1 =>
@@ -133,29 +138,47 @@ infixl 1 =>
 port testOperations : Task () ()
 port testOperations =
   let
+    sleep : Task x ()
     sleep = Task.sleep (1 * Time.second)
+    op : EFO.Operation Int -> Task y ()
     op operation = sleep => send operationAddressee operation
+    increment : Maybe Int -> Maybe Int
+    increment mN = case mN of
+      Nothing -> Just 0
+      Just n -> if n > 3 then Nothing else Just (n + 1)
   in
-      op (EFD.None)
-   -- => op (EFD.Empty)
-   => op (EFD.FromList EFD.Sequential [("b", 4), ("c", 5)])
-   => op (EFD.FromDict EFD.Sequential <| Dict.fromList [("d", 6), ("e", 7), ("f", 8)])
-   => op (EFD.Push 1)
-   => op (EFD.Insert "a" 2)
-   => op (EFD.Insert "a" 3)
-   => op (EFD.Insert "g" 33)
-   => op (EFD.Remove "d")
-   => op (EFD.Update "a" increment)
-   => op (EFD.Update "a" increment)
-   => op (EFD.Update "a" increment)
-   => op (EFD.Update "a" increment)
-   => op (EFD.Map EFD.Parallel (\k n -> n + 1))
-   => op (EFD.Map EFD.AllAtOnce (\k n -> n * 2))
-   => op (EFD.Map EFD.Sequential (\k n -> n - 1))
-   => op (EFD.Filter EFD.AllAtOnce (\k n -> n < 20))
-   -- test FilterMap
+      op (EFO.none)
+   -- => op (EFO.Empty)
+   => op (EFO.fromList EFO.sequential [("b", 4), ("c", 5)])
+   => op (EFO.fromDict EFO.sequential <| Dict.fromList [("d", 6), ("e", 7), ("f", 8)])
+   => op (EFO.push 1)
+   => op (EFO.insert "a" 2)
+   => op (EFO.insert "a" 3)
+   => op (EFO.insert "g" 33)
+   => op (EFO.remove "d")
+   => op (EFO.update "a" increment)
+   => op (EFO.update "a" increment)
+   => op (EFO.update "a" increment)
+   => op (EFO.update "a" increment)
+   => op (EFO.map EFO.parallel (\k n -> n + 1))
+   => op (EFO.map EFO.atOnce (\k n -> n * 2))
+   => op (EFO.map EFO.sequential (\k n -> n - 1))
+   => op (EFO.filter EFO.atOnce (\k n -> n < 20))
+   => op (EFO.insertList EFO.atOnce [("b", 4), ("c", 5)])
+   => op (EFO.insertList EFO.parallel [("x", 10), ("y", 11), ("z", 12)])
+   => op (EFO.filterMap EFO.atOnce (\k n -> if k /= "y" then Just (n + 100) else Nothing))
+   => op (EFO.filterMap EFO.sequential (\k n -> if k /= "z" then Just (n - 100) else Nothing))
+   => op (EFO.removeList EFO.sequential ["c", "e", "a"])
 
-increment : Maybe Int -> Maybe Int
-increment mN = case mN of
-  Nothing -> Just 0
-  Just n -> if n > 3 then Nothing else Just (n + 1)
+port runGetDictTest : Task Error (Dict String Int, List (String, Int), List String, List Int)
+port runGetDictTest =
+  EFD.getDict   config `andThen` \dict ->
+  EFD.getList   config `andThen` \list ->
+  EFD.getKeys   config `andThen` \keys ->
+  EFD.getValues config `andThen` \values ->
+  succeed <|
+    ( Debug.log "getDict" dict
+    , Debug.log "getList" list
+    , Debug.log "getKeys" keys
+    , Debug.log "getValues" values
+    )
