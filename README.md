@@ -4,7 +4,7 @@ This package provides an API layer on top of the basic [ElmFire](http://package.
 that treats a Firebase collection as a key-value store and
 makes it available basically as an Elm dictionary with similar operations on it.
 
-The package contains two modules, for reading and writing respectively:
+The package consists of two modules, for reading and writing respectively:
 
 - `ElmFire.Dict`
   - Mirroring a Firebase location as an Elm `Dict`
@@ -25,7 +25,7 @@ These two modules are intended to be used together.
 - The applications's model will comprise the mirrored dictionary as part of its state.
 - Actions of the application may result in operations on the store.
 
-Local modifications will be reflected immediately in addition to be sent to the Firebase and other clients connected to the same Firebase.
+Local modifications will be reflected immediately in addition to be sent to the Firebase server and to other clients connected to the same Firebase.
 Likewise, remote modifications will be reflected in the locally mirrored dictionary.
 
 ## Configuration
@@ -46,14 +46,15 @@ type alias Config v =
 
 `orderOptions` can be used to filter and limit the elements in the Firebase collection, that should be included in the local mirror. Use `ElmFire.noOrder` to access the whole collection.
 
-Whereas the keys of the store are always of type String, the API is parameterized on the value type `v` of the store.
+The API is parameterized on the value type `v` of the store.
+Note that the keys are always of type String.
 
-The user provides `encoder` and `decoder` functions to convert between the value type in Elm code and the JSON in the Firebase.
+`encoder` and `decoder` are functions to convert between the value type in Elm code and the JSON in the Firebase.
 
 ## Example Code
 
 We setup a simple store with values of type `Int`.
-`model` is the local mirror of the store.
+The signal `model` is the local mirror of the store.
 `taskInit` and `taskMap` are sketches of operations on the store, to populate it and to perform a mapping over it.
 
 ```elm
