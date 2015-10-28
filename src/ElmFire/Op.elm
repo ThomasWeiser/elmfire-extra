@@ -2,7 +2,7 @@ module ElmFire.Op
   ( Config, Operation, Dispatch
   , none, insert, push, update, remove
   , empty, fromDict, fromList, insertList, removeList, map, filter, filterMap
-  , atOnce, sequential, parallel
+  , atomic, sequential, parallel
   , operate, forwardOperation
   ) where
 
@@ -56,7 +56,7 @@ type Operation v
   | FilterMap Dispatch (String -> v -> Maybe v)
 
 type Dispatch
-  = AtOnce
+  = Atomic
   | Sequential
   | Parallel -- will be executed asynchronously (restriction due to Task module)
 
@@ -115,8 +115,8 @@ filterMap : Dispatch -> (String -> v -> Maybe v) -> Operation v
 filterMap = FilterMap
 
 {-|  -}
-atOnce : Dispatch
-atOnce = AtOnce
+atomic : Dispatch
+atomic = Atomic
 
 {-|  -}
 sequential : Dispatch
@@ -169,12 +169,12 @@ operate config operation =
         ElmFire.remove config.location
       FromDict dispatch dict ->
         operate config (FromList dispatch (Dict.toList dict))
-      FromList AtOnce pairs ->
+      FromList Atomic pairs ->
         ElmFire.set (encodePairs pairs) config.location
       FromList dispatch pairs ->
         ElmFire.remove config.location `andThen` \_ ->
         operate config (InsertList dispatch pairs)
-      InsertList AtOnce pairs ->
+      InsertList Atomic pairs ->
         ElmFire.update (encodePairs pairs) config.location
       InsertList dispatch pairs ->
         dispatchTaskList dispatch
@@ -184,24 +184,24 @@ operate config operation =
               )
               pairs
           )
-      RemoveList AtOnce keys ->
+      RemoveList Atomic keys ->
         ElmFire.update
           (JE.object <| List.map (\key -> (key, JE.null)) keys)
           config.location
       RemoveList dispatch keys ->
         dispatchTaskList dispatch
           (List.map (\key -> ElmFire.remove (ElmFire.sub key config.location)) keys)
-      Map AtOnce mapping ->
+      Map Atomic mapping ->
         transactionOp (operateMapTFun config mapping)
       Map dispatch mapping ->
         getKeys `andThen` \keys ->
           dispatchTaskList dispatch (List.map (operateMapElemT config mapping) keys)
-      Filter AtOnce filter ->
+      Filter Atomic filter ->
         transactionOp (operateFilterTFun config filter)
       Filter dispatch filter ->
         getKeys `andThen` \keys ->
           dispatchTaskList dispatch (List.map (operateFilterElemT config filter) keys)
-      FilterMap AtOnce filterMapping ->
+      FilterMap Atomic filterMapping ->
         transactionOp (operateFilterMapTFun config filterMapping)
       FilterMap dispatch filterMapping ->
         getKeys `andThen` \keys ->

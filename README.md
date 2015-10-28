@@ -2,7 +2,7 @@
 
 This package provides an API layer on top of the basic [ElmFire](http://package.elm-lang.org/packages/ThomasWeiser/elmfire/latest) API,
 that treats a Firebase collection as a key-value store and
-makes it available basically as an Elm dictionary with similar operations on it.
+makes it available basically as an Elm dictionary with corresponding operations on it.
 
 The package consists of two modules, for reading and writing respectively:
 
@@ -16,21 +16,21 @@ The package consists of two modules, for reading and writing respectively:
   - Inserting, updating and deleting of single key-value pairs
   - Inserting and deleting lists of key-value pairs
   - Updating the whole collection via the higher-order functions `map`, `filter` and `filterMap`
-  - Operations on the whole store can be run sequentially, in parallel or as a single transaction.
+  - Operations on the whole store can selectively be run sequentially, in parallel or as a single transaction.
 
 ## General Usage Pattern
 
 These two modules are intended to be used together.
 
-- The applications's model will comprise the mirrored dictionary as part of its state.
-- Actions of the application may result in operations on the store.
+- The applications's model will comprise the mirrored store as a dictionary in its state.
+- Some actions of the application result in operations on the store.
 
-Local modifications will be reflected immediately in addition to be sent to the Firebase server and to other clients connected to the same Firebase.
-Likewise, remote modifications will be reflected in the locally mirrored dictionary.
+Local modifications will be reflected immediately in addition to be sent to the Firebase server and to other clients subscribed to the same Firebase location.
+Likewise, remote modifications will be reflected in the local mirror.
 
 ## Configuration
 
-All functionality of the package is guided by a configuration record that determines type mappings and other specifics of the Firebase collection.
+All functionality of the package is guided by a configuration record that defines type mappings and other specifics of the Firebase collection.
 
 ```elm
 type alias Config v =
@@ -44,20 +44,22 @@ type alias Config v =
 
 `location` specifies the Firebase and sub-path where the store is hosted.
 
-`orderOptions` can be used to filter and limit the elements in the Firebase collection, that should be included in the local mirror. Use `ElmFire.noOrder` to access the whole collection.
+`orderOptions` can be used to filter and limit the elements, that should be included in the local mirror. Use `ElmFire.noOrder` to access the whole collection.
 
-The API is parameterized on the value type `v` of the store.
+The API is parameterized on the store's value type `v`. This can be any Elm type, as long as suitable conversion functions are provided.
 Note that the keys are always of type String.
 
-`encoder` and `decoder` are functions to convert between the value type in Elm code and the JSON in the Firebase.
+`encoder` and `decoder` are the functions used to convert between the value type in Elm code and the JSON schema in the Firebase.
 
 ## Example Code
 
 We setup a simple store with values of type `Int`.
 The signal `model` is the local mirror of the store.
-`taskInit` and `taskMap` are sketches of operations on the store, to populate it and to perform a mapping over it.
+`taskInit` and `taskMap` are sketches of operations on the store, that populate it and perform a mapping over it.
 
 ```elm
+url = "https://myfirebase.firebaseio.com/sub/path"
+
 config =
   { location = ElmFire.fromUrl (url)
   , orderOptions = ElmFire.noOrder
@@ -66,16 +68,16 @@ config =
   }
 
 -- Start mirroring
---   (run initialTask via a port)
+--   (run subscriptionTask via a port)
 --   model : Signal (Dict String Int)
-(initialTask, model) = ElmFire.Dict.mirror config
+(subscriptionTask, model) = ElmFire.Dict.mirror config
 
 -- Initialize the store  (run the tasks via a port)
 taskInit : ElmFire.Op.Operation Int
 taskInit =
   ElmFire.Op.fromList
     ElmFire.Op.parallel
-    [("a",1), ("b",2)]
+    [("foo",1), ("bar",2)]
 
 -- Double each value
 taskMap : ElmFire.Op.Operation Int
@@ -84,3 +86,9 @@ taskMap =
     ElmFire.Op.sequential
     (\key val -> val * 2)
 ```
+
+## Usage in TodoMVC
+
+An example usage of this package is [this fork of TodoMVC](https://github.com/ThomasWeiser/todomvc-elmfire/tree/elmfire-extra). It uses Firebase to store and share the todo items.
+
+It utilizes `ElmFire.Dict` and `ElmFire.Op` in the aforementioned [usage pattern](#general-usage-pattern).
