@@ -1,5 +1,7 @@
 # High-level API for ElmFire
 
+## Treat your Firebase data like a local Dict
+
 This package provides an API layer on top of the basic [ElmFire](http://package.elm-lang.org/packages/ThomasWeiser/elmfire/latest) API,
 that treats a Firebase collection as a key-value store and
 makes it available basically as an Elm dictionary with corresponding operations on it.
@@ -22,8 +24,8 @@ The package consists of two modules, for reading and writing respectively:
 
 These two modules are intended to be used together.
 
-- The applications's model will comprise the mirrored store as a dictionary in its state.
-- Some actions of the application result in operations on the store.
+- The state of the mirrored store will be held as a dictionary as part of the application's model.
+- Operations on the store are performed by the appropriate actions of the application.
 
 Local modifications will be reflected immediately in addition to be sent to the Firebase server and to other clients subscribed to the same Firebase location.
 Likewise, remote modifications will be reflected in the local mirror.
@@ -61,7 +63,7 @@ The signal `model` is the local mirror of the store.
 url = "https://myfirebase.firebaseio.com/sub/path"
 
 config =
-  { location = ElmFire.fromUrl (url)
+  { location = ElmFire.fromUrl url
   , orderOptions = ElmFire.noOrder
   , encoder = Json.Encode.int
   , decoder = Json.Decode.int

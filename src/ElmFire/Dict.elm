@@ -5,12 +5,26 @@ module ElmFire.Dict
   ) where
 
 
-{-| ...
+{-| Tasks to mirror a Firebase location in an Elm dictionary , either one-time or continuously.
 
-...
+The Firebase collection at a given location is treated like a key-value store, which is mapped into a `Dict String v`.
 
-# ...
-@docs mirror
+Keys are of type String. Values get converted gtom JSON to a user-defined type `v`.
+
+This module is accompanied by `ElmFire.Op` for modifying the key-value store.
+
+# Configuration
+@docs Config
+
+# One-time queries
+@docs getDict
+
+The lists returned by the following query tasks are ordered in respect to the configured `orderOptions`.
+
+@docs getList, getKeys, getValues
+
+# Subscribing to continuous mirroring
+@docs Delta, subscribeDelta, update, integrate, mirror
 -}
 
 import Signal exposing (Mailbox, Address, mailbox, send)
@@ -31,6 +45,18 @@ import Debug
 
 ------------------------------------------------------------------------------
 
+
+{-| Each query target is described by a configuration:
+
+- `location`: Pointer to the Firebase path, e.g. `ElmFire.fromUrl "https://.../..."`.
+- `orderOptions`: Filter and limit elements according to a given order. Use `ElmFire.noOrder` if not needed.
+- `encoder`: Function to convert Elm values into JSON values according to the Firebase's schema.
+  `encoder` is used only in module `ElmFire.Op`, but is present here because the type `Config` is shared between these two modules.
+- `decoder`: A Json.Decoder used to convert a JSON value from the Firebase into the corresponding Elm value.
+
+Decoding errors are reported as the special `Delta` value `Undecodable String String`.
+They are silently ignored in all other functions of this module.
+-}
 type alias Config v =
   { location: ElmFire.Location
   , orderOptions: ElmFire.OrderOptions
@@ -38,6 +64,7 @@ type alias Config v =
   , decoder: JD.Decoder v
   }
 
+{-| Represents a single update reported from the Firebase. -}
 type Delta v
   = Idem
   | Added String v
@@ -49,10 +76,12 @@ type Delta v
 
 ------------------------------------------------------------------------------
 
+{-| One-time query, mapping the Firebase store to a dictionary -}
 getDict : Config v -> Task Error (Dict String v)
 getDict config =
   getList config |> Task.map Dict.fromList
 
+{-| One-time query, mapping the Firebase store to a list of key-value pairs -}
 getList : Config v -> Task Error (List (String, v))
 getList config =
   let
@@ -67,11 +96,13 @@ getList config =
     ElmFire.once (ElmFire.valueChanged config.orderOptions) config.location
     |> Task.map (ElmFire.toPairList >> decodePairList)
 
+{-| One-time query, resulting in a list of keys (without values) -}
 getKeys : Config v -> Task Error (List String)
 getKeys config =
   ElmFire.once (ElmFire.valueChanged config.orderOptions) config.location
   |> Task.map ElmFire.toKeyList
 
+{-| One-time query, resulting in a list of values (without keys) -}
 getValues : Config v -> Task Error (List v)
 getValues config =
   let
@@ -81,6 +112,11 @@ getValues config =
     ElmFire.once (ElmFire.valueChanged config.orderOptions) config.location
     |> Task.map (ElmFire.toValueList >> decodeValueList)
 
+{-| Get the initial state from the Firebase and subscribe to subsequent updates.
+The resulting deltas are sent to a given mailbox.
+
+The success-result is a task that may be executed later to unsubscribe again.
+-}
 subscribeDelta : Address (Delta v) ->  Config v -> Task Error (Task Error ())
 subscribeDelta addressee config =
   let
@@ -111,6 +147,7 @@ subscribeDelta addressee config =
        `andThen` \_ -> ElmFire.unsubscribe s3
       )
 
+{-| Update a dictionary by applying a single given delta. -}
 update : Delta v -> Dict String v -> Dict String v
 update delta dict =
   case delta of
@@ -122,10 +159,18 @@ update delta dict =
     Unsubscribed -> dict
     QueryError _ -> dict
 
+{-| Integrate a signal of deltas, returning a signal of dictionaries. -}
 integrate : Signal (Delta v) -> Signal (Dict String v)
 integrate deltas =
   Signal.foldp update Dict.empty deltas
 
+{-| Convenience function, that combines subscribing to and integrating of deltas.
+It returns a 2-tuple:
+
+- First element is a task that must be executed in order to subscribe to the Firebase updates.
+  Its success result can be used for unsubscribing again.
+- Second element is a signal of the dictionary, that consecutively mirrors the Firebase collection.
+-}
 mirror : Config v -> (Task Error (Task Error ()), Signal (Dict String v))
 mirror config =
   let

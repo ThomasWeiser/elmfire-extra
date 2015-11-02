@@ -1,13 +1,14 @@
 {
     "version": "1.0.0",
-    "summary": "Extra modules for ElmFire",
+    "summary": "High-level API for ElmFire",
     "repository": "https://github.com/ThomasWeiser/elmfire-extra.git",
     "license": "BSD3",
     "source-directories": [
         "src"
     ],
     "exposed-modules": [
-        "ElmFire.Dict"
+        "ElmFire.Dict",
+        "ElmFire.Op"
     ],
     "dependencies": {
         "elm-lang/core": "2.0.0 <= v < 4.0.0",
