@@ -91,6 +91,6 @@ taskMap =
 
 ## Usage in TodoMVC
 
-An example usage of this package is [this fork of TodoMVC](https://github.com/ThomasWeiser/todomvc-elmfire/tree/elmfire-extra). It uses Firebase to store and share the todo items.
+An example usage of this package is [this fork of TodoMVC](https://github.com/ThomasWeiser/todomvc-elmfire). It uses Firebase to store and share the todo items.
 
 It utilizes `ElmFire.Dict` and `ElmFire.Op` in the aforementioned [usage pattern](#general-usage-pattern).

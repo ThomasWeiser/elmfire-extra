@@ -38,6 +38,10 @@ import Debug
 {- Notes
 
   - Poss. maintain a `Maybe (Dict (String v))` to deal with undefined states
+  - Delta with undecodable but changed value should remove the key from the dict
+  - Poss. emit a `Loaded` event
+    (rf. to AngulatFire:
+     https://www.firebase.com/docs/web/libraries/angular/api.html#angularfire-firebaseobject-loaded)
   - for throttling the output Signal:
       - see Apanatshka/elm-signal-extra
       - poss. new throttle function that updates at least after every given time-period
