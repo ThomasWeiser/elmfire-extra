@@ -138,17 +138,17 @@ infixl 1 =>
 port testOperations : Task () ()
 port testOperations =
   let
-    sleep : Task x ()
-    sleep = Task.sleep (1 * Time.second)
     op : EFO.Operation Int -> Task y ()
-    op operation = sleep => send operationAddressee operation
+    op operation =
+      Task.sleep (1 * Time.second) => send operationAddressee operation
     increment : Maybe Int -> Maybe Int
-    increment mN = case mN of
-      Nothing -> Just 0
-      Just n -> if n > 3 then Nothing else Just (n + 1)
+    increment mN =
+      case mN of
+        Nothing -> Just 0
+        Just n -> if n > 3 then Nothing else Just (n + 1)
   in
       op (EFO.none)
-   -- => op (EFO.Empty)
+   => op (EFO.empty)
    => op (EFO.fromList EFO.sequential [("b", 4), ("c", 5)])
    => op (EFO.fromDict EFO.sequential <| Dict.fromList [("d", 6), ("e", 7), ("f", 8)])
    => op (EFO.push 1)

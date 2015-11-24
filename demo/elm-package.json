@@ -1,7 +1,7 @@
 {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "summary": "ElmFire app demonstrating dict-syncing",
-    "repository": "http://github.com/thomasweiser/elmfire-extra.git",
+    "repository": "http://github.com/ThomasWeiser/elmfire-extra.git",
     "license": "BSD3",
     "source-directories": [
         "src",

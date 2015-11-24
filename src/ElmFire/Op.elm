@@ -196,7 +196,11 @@ operate config operation =
       Push value ->
         ElmFire.set (config.encoder value) (ElmFire.push config.location)
       Update key alter ->
-        transactionOp (operateUpdateFun config alter)
+        ElmFire.transaction
+          (operateUpdateFun config alter)
+          (config.location |> ElmFire.sub key)
+          True
+        |> Task.map (snd >> .reference)
       Remove key ->
         ElmFire.remove (ElmFire.sub key config.location)
       Empty ->
