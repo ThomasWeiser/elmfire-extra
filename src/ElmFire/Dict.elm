@@ -5,11 +5,11 @@ module ElmFire.Dict
   ) where
 
 
-{-| Tasks to mirror a Firebase location in an Elm dictionary , either one-time or continuously.
+{-| Tasks to mirror a Firebase location in an Elm dictionary, either one-time or continuously.
 
 The Firebase collection at a given location is treated like a key-value store, which is mapped into a `Dict String v`.
 
-Keys are of type String. Values get converted gtom JSON to a user-defined type `v`.
+Keys are of type String. Values get converted from JSON to a user-defined type `v`.
 
 This module is accompanied by `ElmFire.Op` for modifying the key-value store.
 
@@ -40,7 +40,7 @@ import Debug
   - Poss. maintain a `Maybe (Dict (String v))` to deal with undefined states
   - Delta with undecodable but changed value should remove the key from the dict
   - Poss. emit a `Loaded` event
-    (rf. to AngulatFire:
+    (rf. to AngularFire:
      https://www.firebase.com/docs/web/libraries/angular/api.html#angularfire-firebaseobject-loaded)
   - for throttling the output Signal:
       - see Apanatshka/elm-signal-extra
@@ -168,12 +168,12 @@ integrate : Signal (Delta v) -> Signal (Dict String v)
 integrate deltas =
   Signal.foldp update Dict.empty deltas
 
-{-| Convenience function, that combines subscribing to and integrating of deltas.
+{-| Convenience function that combines subscribing to and integrating of deltas.
 It returns a 2-tuple:
 
 - First element is a task that must be executed in order to subscribe to the Firebase updates.
   Its success result can be used for unsubscribing again.
-- Second element is a signal of the dictionary, that consecutively mirrors the Firebase collection.
+- Second element is a signal of the dictionary that consecutively mirrors the Firebase collection.
 -}
 mirror : Config v -> (Task Error (Task Error ()), Signal (Dict String v))
 mirror config =
