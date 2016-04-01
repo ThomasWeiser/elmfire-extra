@@ -119,7 +119,9 @@ getValues config =
 {-| Get the initial state from the Firebase and subscribe to subsequent updates.
 The resulting deltas are sent to a given mailbox.
 
-The success-result is a task that may be executed later to unsubscribe again.
+The resulting task needs to be executed in order to initiate the subscription.
+
+Its success-result is a task that may be executed later to unsubscribe again.
 -}
 subscribeDelta : Address (Delta v) ->  Config v -> Task Error (Task Error ())
 subscribeDelta addressee config =
@@ -171,8 +173,8 @@ integrate deltas =
 {-| Convenience function that combines subscribing to and integrating of deltas.
 It returns a 2-tuple:
 
-- First element is a task that must be executed in order to subscribe to the Firebase updates.
-  Its success result can be used for unsubscribing again.
+- First element is a task to subscribe to the Firebase updates. It needs to be executed to initiate
+  the subscritpion. The task's result is another task that can be uses for unsubscribing.
 - Second element is a signal of the dictionary that consecutively mirrors the Firebase collection.
 -}
 mirror : Config v -> (Task Error (Task Error ()), Signal (Dict String v))

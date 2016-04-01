@@ -56,41 +56,58 @@ Note that the keys are always of type String.
 ## Example Code
 
 We setup a simple store with values of type `Int`.
-The signal `model` is the local mirror of the store.
-`taskInit` and `taskMap` are sketches of operations on the store, that populate it and perform a mapping over it.
-
 ```elm
 url = "https://myfirebase.firebaseio.com/sub/path"
 
+config : ElmFire.Dict.Config Int
 config =
   { location = ElmFire.fromUrl url
   , orderOptions = ElmFire.noOrder
   , encoder = Json.Encode.int
   , decoder = Json.Decode.int
   }
+```
+Start to mirror the store as a signal `model`.
+```elm
+mirror = ElmFire.Dict.mirror config
 
--- Start mirroring
---   (run subscriptionTask via a port)
---   model : Signal (Dict String Int)
-(subscriptionTask, model) = ElmFire.Dict.mirror config
+port initSubscription : Task ElmFire.Error (Task ElmFire.Error ())
+port initSubscription = fst mirror
 
+model : Signal (Dict String Int)
+model = snd mirror
+```
+Define two operations on the store and run them. The result will be reflected in the mirror.
+```elm
 -- Initialize the store  (run the tasks via a port)
-taskInit : ElmFire.Op.Operation Int
-taskInit =
+opInit : ElmFire.Op.Operation Int
+opInit =
   ElmFire.Op.fromList
-    ElmFire.Op.parallel
+    ElmFire.Op.sequential
     [("foo",1), ("bar",2)]
 
 -- Double each value
-taskMap : ElmFire.Op.Operation Int
-taskMap =
+opMap : ElmFire.Op.Operation Int
+opMap =
   ElmFire.Op.map
     ElmFire.Op.sequential
     (\key val -> val * 2)
-```
 
-## Usage in TodoMVC
+port runOperation : Task ElmFire.Error (List ElmFire.Reference)
+port runOperation =
+  Task.sequence <|
+    List.map (ElmFire.Op.operate config) [opInit, opMap, opMap]
+```
+The package includes the complete example code in directory `example/`. There is also a more detailed demonstration app in directory `demo/`
+
+## Examples of projects using elmfire-extra
+
+### TodoMVC
 
 An example usage of this package is [this fork of TodoMVC](https://github.com/ThomasWeiser/todomvc-elmfire). It uses Firebase to store and share the todo items.
 
 It utilizes `ElmFire.Dict` and `ElmFire.Op` in the aforementioned [usage pattern](#general-usage-pattern).
+
+### elmfire-extra-hello-world
+
+Raine Revere published some instructive minimal example code. Starts [here](https://github.com/metaraine/elmfire-extra-hello-world).
